@@ -1,0 +1,32 @@
+# ─── Build outputs ────────────────────────────────────────────────────────────
+build/
+Release/
+Debug/
+
+# ─── Visual Studio / MSVC noise ───────────────────────────────────────────────
+.vs/
+*.user
+*.suo
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+ipch/
+[Oo]bj/
+[Oo]ut/
+x64/
+x86/
+Win32/
+ARM/
+ARM64/
+*.pdb
+*.exp
+*.ilk
+
+# ─── Claude Code session cache (this dir) ─────────────────────────────────────
+.claude/
+
+# ─── Misc ──────────────────────────────────────────────────────────────────────
+*.log
+Thumbs.db
+.DS_Store
