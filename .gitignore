@@ -5,6 +5,7 @@
 build/
 Release/
 Debug/
+examples/**/build/
 
 # ─── Visual Studio / MSVC noise ───────────────────────────────────────────────
 .vs/

@@ -42,9 +42,9 @@ target_link_libraries(ns_infer PRIVATE
 )
 
 # ─────────────────────────────────────────────
-#  Inference-specific includes (if any)
+#  Inference-specific includes (PUBLIC so consumers see them)
 # ─────────────────────────────────────────────
-target_include_directories(ns_infer PRIVATE
+target_include_directories(ns_infer PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/src
