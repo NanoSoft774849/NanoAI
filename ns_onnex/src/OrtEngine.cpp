@@ -112,7 +112,7 @@ ns_ort_engine::~ns_ort_engine()
 
 void ns_ort_engine::print_debug_string()
 {
-    std::wcout << L"LITEORT_DEBUG LogId: " << onnx_path << L"\n";
+    std::wcout << L"NANOAI LogId: " << onnx_path << L"\n";
 
     std::cout << "=============== Input-Dims ==============\n";
 
