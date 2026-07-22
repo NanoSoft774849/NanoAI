@@ -1,0 +1,44 @@
+{
+    // ─── Files & search ────────────────────────────────────────────────────────
+    // Keep generated / runtime paths out of search, file watcher and
+    // IntelliSense crawl, so Cmd-P and Go-to-File stay clean.
+    "files.exclude": {
+        "build/": true,
+        "Release/": true,
+        ".vscode/browse.db": true
+    },
+    "search.exclude": {
+        "build/": true,
+        "Release/": true,
+        ".vscode/": true,
+        ".claude/": true
+    },
+    "files.watcherExclude": {
+        "build/**": true,
+        "Release/**": true,
+        ".vscode/browse.db": true,
+        ".claude/**": true
+    },
+
+    // Treat project headers as C++ so IntelliSense parses them correctly.
+    "files.associations": {
+        "*.h": "cpp"
+    },
+
+    // ─── CMake Tools (if the ms-vscode.cmake-tools extension is installed) ─────
+    "cmake.sourceDirectory": "${workspaceFolder}",
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "cmake.configureOnOpen": true,
+    "cmake.generator": "Visual Studio 17 2022 Win64",
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+
+    // ─── Editor preferences ────────────────────────────────────────────────────
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "editor.formatOnSave": false,
+    "C_Cpp.formatting": "disabled",
+
+    // ─── Output channel for build errors ───────────────────────────────────────
+    "C_Cpp.errorSquiggles": "enabled",
+    "C_Cpp.loggingLevel": "Warning"
+}

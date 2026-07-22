@@ -1,0 +1,75 @@
+{
+    "configurations": [
+        {
+            "name": "ns_infer (MSVC x64)",
+            "intelliSenseMode": "windows-msvc-x64",
+            "compilerPath": "cl.exe",
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "windowsSdkVersion": "10.0.22621.0",
+
+            "includePath": [
+                "${workspaceFolder}",
+                "${workspaceFolder}/ns_onnex",
+                "${workspaceFolder}/ns_onnex/include",
+                "${workspaceFolder}/ns_onnex/src",
+
+                "U:/nano_local_ai/onnxruntime/include",
+                "U:/nano_local_ai/opencv/build/include",
+                "U:/nano_local_ai/ffmpeg/include",
+                "U:/nano_local_ai/libtorch/libtorch/include",
+
+                "F:/Qt6/6.11.1/msvc2022_64/include",
+                "F:/Qt6/6.11.1/msvc2022_64/include/QtCore",
+                "F:/Qt6/6.11.1/msvc2022_64/include/QtGui",
+                "F:/Qt6/6.11.1/msvc2022_64/include/QtWidgets",
+                "F:/Qt6/6.11.1/msvc2022_64/include/QtNetwork",
+                "F:/Qt6/6.11.1/msvc2022_64/include/QtSql",
+                "F:/Qt6/6.11.1/msvc2022_64/include/QtConcurrent",
+                "F:/Qt6/6.11.1/msvc2022_64/include/QtMultimedia",
+
+                "F:/Vs2022/VC/Tools/MSVC/14.43.34808/include",
+                "C:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/ucrt",
+                "C:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/shared",
+                "C:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/um",
+                "C:/Program Files (x86)/Windows Kits/10/Include/10.0.22621.0/winrt",
+
+                "${default}"
+            ],
+
+            "defines": [
+                "USE_ONNX_BACKEND",
+                "_CRT_SECURE_NO_WARNINGS",
+                "NOMINMAX",
+                "WIN32_LEAN_AND_MEAN",
+                "WIN32",
+                "_WINDOWS",
+                "_WIN64",
+                "NDEBUG",
+                "UNICODE",
+                "_UNICODE",
+                "QT_CORE_LIB",
+                "QT_GUI_LIB",
+                "QT_WIDGETS_LIB",
+                "QT_NETWORK_LIB",
+                "QT_SQL_LIB",
+                "QT_CONCURRENT_LIB",
+                "QT_MULTIMEDIA_LIB"
+            ],
+
+            "browse": {
+                "limitSymbolsToIncludedHeaders": true,
+                "databaseFilename": "${workspaceFolder}/.vscode/browse.db",
+                "path": [
+                    "${workspaceFolder}",
+                    "${workspaceFolder}/ns_onnex",
+                    "${workspaceFolder}/ns_onnex/include",
+                    "${workspaceFolder}/ns_onnex/src",
+                    "U:/nano_local_ai/onnxruntime/include",
+                    "U:/nano_local_ai/opencv/build/include"
+                ]
+            }
+        }
+    ],
+    "version": 4
+}
