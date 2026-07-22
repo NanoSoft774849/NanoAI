@@ -30,3 +30,9 @@ ARM64/
 *.log
 Thumbs.db
 .DS_Store
+
+# ─── VS Code C/C++ extension browse cache (SQLite) ────────────────────────────
+.vscode/*.DB
+.vscode/*.DB-shm
+.vscode/*.DB-wal
+.vscode/browse.db*
