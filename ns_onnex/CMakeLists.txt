@@ -6,6 +6,10 @@ set(SOURCES
     src/utils.cpp
     src/types.cpp
     src/OrtEngine.cpp
+    src/CasDecoding.cpp
+    src/CasDenseEngine.cpp
+    src/CasScoreEngine.cpp
+    src/CasOasisDetector.cpp
 
 )
 
@@ -17,7 +21,12 @@ set(HEADERS
     include/types.h
     include/OrtEngine.h
     include/constants.h
-   
+    include/CasDetectorOptions.h
+    include/CasDecoding.h
+    include/CasDenseEngine.h
+    include/CasScoreEngine.h
+    include/CasOasisDetector.h
+
 )
 
 # ─────────────────────────────────────────────
@@ -29,10 +38,14 @@ add_library(ns_infer SHARED ${SOURCES} ${HEADERS})
 # so consumers of the DLL get dllimport via the same headers.
 target_compile_definitions(ns_infer PRIVATE NS_INFER_EXPORTS)
 
-# Produce ns_infer.dll alongside the import library ns_infer.lib
-set_target_properties(ns_infer PROPERTIES
-    WINDOWS_EXPORT_ALL_SYMBOLS ON
-)
+# Produce ns_infer.dll alongside the import library ns_infer.lib.
+# WINDOWS_EXPORT_ALL_SYMBOLS is intentionally OFF: the DLL uses explicit
+# __declspec(dllexport) via NS_INFER_API. Turning the auto-export on triggers
+# CMake's __create_def helper, which invokes `link.exe /DUMP` and segfaults
+# when Git's link.exe (a symlink utility) precedes MSVC's link.exe on PATH.
+# set_target_properties(ns_infer PROPERTIES
+#     WINDOWS_EXPORT_ALL_SYMBOLS ON
+# )
 
 # ─────────────────────────────────────────────
 #  JUST LINK global_deps - GETS EVERYTHING

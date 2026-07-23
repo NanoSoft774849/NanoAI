@@ -79,6 +79,13 @@ protected:
     ns_ort_engine& operator=(const ns_ort_engine&) = delete;
     ns_ort_engine& operator=(ns_ort_engine&&)      = delete;
 
+protected:
+    // Handle to the ORT environment created in initialize_handler().
+    // Exposed so derived classes that wrap more than one session (e.g. a
+    // dense + score pair) can construct their additional sessions against
+    // the same environment instead of spinning up a second one.
+    Ort::Env                       ort_env;
+
 private:
     // Loads the model, configures session options, and caches I/O metadata.
     void initialize_handler();
@@ -88,7 +95,6 @@ private:
     void print_debug_string();
 
     // --- ONNX Runtime state ---------------------------------------------------
-    Ort::Env                       ort_env;                 // assigned in initialize_handler
     Ort::Session*                  ort_session = nullptr;  // owned; freed in dtor
     const char*                    input_name  = nullptr;
     Ort::MemoryInfo                memory_info_handler = Ort::MemoryInfo::CreateCpu(

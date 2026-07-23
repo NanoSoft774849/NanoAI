@@ -7,6 +7,10 @@ against `ns_infer.lib`, include the headers under `ns_onnex/include/`, and
 derive your models from `ns_ort_engine` (single input) or
 `BasicMultiOrtHandler` (multi input).
 
+The DLL also ships with the **CAS-Oasis line detector** — a two-model
+pipeline (`cas_dense.onnx` → `cas_score.onnx`) split into independent
+engines and glued together by a thin façade class.
+
 ## What you get
 
 - **`ns_infer.dll`** — the inference runtime. Exports the public C++ surface
@@ -24,23 +28,39 @@ All of those land in `F:/CubeBox/ns_ai/Release/` by default.
 
 ```
 ns_ai/
-├── CMakeLists.txt            # top-level — global_deps, output dirs, subdirs
-├── prepare.bat               # cmake configure step
-├── build.bat                 # cmake build step (MSBuild / Ninja)
-├── .gitignore                # excludes build/, Release/, .claude/, VS noise
-└── ns_onnex/
-    ├── CMakeLists.txt        # builds ns_infer as a SHARED library
-    ├── include/
-    │   ├── ns_infer_export.h # NS_INFER_API dllimport/dllexport switch
-    │   ├── ns_headers.h      # stdlib + OpenCV umbrella
-    │   ├── types.h           # lite::types (Boxf, Landmarks, EulerAngles, …)
-    │   ├── utils.h           # lite::utils (drawing, NMS, matting, math)
-    │   ├── constants.h       # project-wide constants
-    │   └── OrtEngine.h       # ns_ort_engine + BasicMultiOrtHandler bases
-    └── src/
-        ├── utils.cpp
-        ├── types.cpp
-        └── OrtEngine.cpp     # session creation, I/O metadata caching
+├── CMakeLists.txt                  # top-level — global_deps, output dirs, subdirs
+├── prepare.bat                     # cmake configure step
+├── build.bat                       # cmake build step (MSBuild / Ninja)
+├── .gitignore                      # excludes build/, Release/, .claude/, VS noise
+├── ns_onnex/                       # the inference DLL
+│   ├── CMakeLists.txt
+│   ├── include/
+│   │   ├── ns_infer_export.h       # NS_INFER_API dllimport/dllexport switch
+│   │   ├── ns_headers.h            # stdlib + OpenCV umbrella
+│   │   ├── types.h                 # lite::types (Boxf, Landmarks, EulerAngles, …)
+│   │   ├── utils.h                 # lite::utils (drawing, NMS, matting, math)
+│   │   ├── constants.h             # project-wide constants
+│   │   ├── OrtEngine.h             # ns_ort_engine + BasicMultiOrtHandler bases
+│   │   ├── CasDetectorOptions.h    # CasDetectorOptions POD (shared by the engines)
+│   │   ├── CasDecoding.h           # cas::decoding::Junction / Proposal + decoders
+│   │   ├── CasDenseEngine.h        # cas_dense.onnx wrapper (public)
+│   │   ├── CasScoreEngine.h        # cas_score.onnx wrapper (public)
+│   │   └── CasOasisDetector.h      # façade composing both engines
+│   └── src/
+│       ├── utils.cpp
+│       ├── types.cpp
+│       ├── OrtEngine.cpp           # session creation, I/O metadata caching
+│       ├── CasDecoding.cpp         # NMS, junction/proposal extraction
+│       ├── CasDenseEngine.cpp
+│       ├── CasScoreEngine.cpp
+│       └── CasOasisDetector.cpp    # pipeline + persistent scratch buffers
+└── examples/
+    ├── test01/                     # smoke test: print model I/O metadata
+    │   ├── CMakeLists.txt
+    │   └── main.cpp
+    └── DetectorTest/               # live camera + single-image line detector
+        ├── CMakeLists.txt
+        └── main.cpp
 ```
 
 ## Build
@@ -79,6 +99,8 @@ cmake . -B build -DOpenCV_ROOT=/path/to/opencv -DFFMPEG_ROOT=/path/to/ffmpeg
 
 ## Consuming the DLL
 
+### Roll your own single-input model
+
 ```cpp
 #include "OrtEngine.h"   // pulls NS_INFER_API + the public base classes
 
@@ -94,7 +116,47 @@ protected:
 };
 ```
 
-Then in your build system:
+### Use the CAS-Oasis line detector
+
+`CasOasisDetector` is a façade that owns one `CasDenseEngine` (image →
+features + heatmaps) and one `CasScoreEngine` (features + proposals →
+per-line scores), with shared CPU-side decoding in `cas::decoding`. Each
+engine is independently usable; the detector just orchestrates them.
+
+```cpp
+#include "CasOasisDetector.h"
+
+CasDetectorOptions options;
+options.junctionThreshold = 0.008f;
+options.intraOpThreads    = 0;   // 0 = let ONNX Runtime pick
+
+CasOasisDetector detector(
+    "models/cas_dense.onnx",
+    "models/cas_score.onnx",
+    options
+);
+
+detector.warmUp();   // optional: prime ORT kernels before the first frame
+
+cv::Mat frame = /* … grab a frame … */;
+CasDetectionResult result = detector.detect(frame, /*threshold=*/0.80f);
+
+for (const CasLine& line : result.lines) {
+    cv::line(frame, line.start, line.end, cv::Scalar(0, 165, 255), 2);
+}
+```
+
+Run the bundled demo:
+
+```bash
+# Camera
+build\Release\Detector.exe models\cas_dense.onnx models\cas_score.onnx 0 0.80
+
+# Single image
+build\Release\Detector.exe models\cas_dense.onnx models\cas_score.onnx --image test.jpg 0.80
+```
+
+### Linker / include setup
 
 ```cmake
 target_link_libraries(myapp PRIVATE
@@ -108,11 +170,33 @@ target_include_directories(myapp PRIVATE
 …and drop every DLL in `F:/CubeBox/ns_ai/Release/` next to your `.exe` at
 deploy time.
 
+## CAS-Oasis pipeline (realtime notes)
+
+The detector is designed for repeated calls from a real-time loop:
+
+- **Persistent scratch buffers** — `CasOasisDetector` keeps `indexScratch_`,
+  `proposalDataScratch_`, `scoresScratch_`, `linesScratch_`,
+  `junctionsScratch_`, and `proposalsScratch_` as members and reuses them
+  across `detect()` calls. The hot path allocates nothing.
+- **Skip the score session** — if decoding produces no proposals, the
+  score model is not invoked.
+- **Live `features` pass-through** — `CasDenseEngine::run()` returns the
+  dense output tensors as a struct; `CasScoreEngine::score()` consumes the
+  `features` `Ort::Value` without copying.
+- **`warmUp()`** — runs a zero-image inference on each engine once so the
+  first real frame doesn't pay ORT's kernel-compile tax.
+
 ## Status
 
-- Builds clean: 0 errors, 0 warnings on MSVC 2022.
+- Builds clean: **0 errors**. A handful of pre-existing `C4251` (DLL-interface
+  on STL members) and `C4267` (signed/unsigned conversion) warnings remain
+  in `ns_ort_engine`, `ns_ort_utils`, and `CasOasisDetector` — all harmless
+  for in-process use; they only matter if a consumer of the DLL holds
+  pointers to STL members across the DLL boundary.
 - Public surface: `ns_ort_engine`, `BasicMultiOrtHandler`, the `lite::types`
   types and `lite::utils` free functions are tagged with `NS_INFER_API`.
+  `CasDenseEngine`, `CasScoreEngine`, `CasOasisDetector`, `CasLine`, and
+  `CasDetectionResult` are exported the same way.
 - `prepare.bat` line:
   `-DCMAKE_PREFIX_PATH=F:/Qt6/6.11.1/msvc2022_64` is commented out — Qt is
   picked up automatically through `find_package(Qt6 …)` because its `bin`
@@ -125,3 +209,5 @@ deploy time.
   `Qt6::Network` — see the `#1` issue in the CMakeLists.txt review.
 - Re-enable `add_subdirectory(inference)` and `add_subdirectory(app)` once
   those trees exist.
+- Bind the score session's `proposals` input to a pre-allocated tensor
+  via ORT's IO Binding API to skip one allocation per frame.

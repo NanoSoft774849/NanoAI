@@ -57,5 +57,6 @@ target_compile_definitions(global_deps INTERFACE
 # Subdirectories
 add_subdirectory(ns_onnex)
 add_subdirectory(examples/test01)
+add_subdirectory(examples/DetectorTest)
 # add_subdirectory(inference)
 # add_subdirectory(app)
