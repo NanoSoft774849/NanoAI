@@ -1,6 +1,12 @@
 
 #include "OrtEngine.h"
 #include "utils.h"
+
+// Note: OrtSessionOptionsAppendExecutionProvider_CUDA is declared in
+// onnxruntime_c_api.h itself in ORT 1.24+ (the dedicated
+// onnxruntime_providers_cuda.h header was dropped). Implementation lives in
+// onnxruntime_providers_cuda.dll which ORT loads at runtime.
+
 ns_ort_engine::ns_ort_engine(
     const std::string& _onnx_path, unsigned int _num_threads) :
     log_id(_onnx_path.data()), num_threads(_num_threads)

@@ -64,12 +64,18 @@ target_include_directories(ns_infer PUBLIC
 )
 
 # ─────────────────────────────────────────────
-#  CUDA (if needed)
+#  CUDA execution provider (optional, OFF by default)
+#  When -DUSE_CUDA=ON is passed:
+#    * define USE_CUDA so OrtEngine.cpp forwards the session options into
+#      OrtSessionOptionsAppendExecutionProvider_CUDA (declared manually
+#      because ORT 1.24+ dropped the public header).
+#    * link against onnxruntime.lib (already linked) — that .lib provides
+#      the import address for OrtSessionOptionsAppendExecutionProvider_CUDA.
+#      We do NOT link against the CUDA toolkit itself: the actual EP code
+#      lives in onnxruntime_providers_cuda.dll which ORT loads at runtime.
 # ─────────────────────────────────────────────
 if(USE_CUDA)
-    find_package(CUDA REQUIRED)
     target_compile_definitions(ns_infer PRIVATE USE_CUDA)
-    target_link_libraries(ns_infer PRIVATE ${CUDA_LIBRARIES})
 endif()
 
 # ─────────────────────────────────────────────
@@ -101,6 +107,8 @@ if(WIN32)
             "${FFMPEG_ROOT}/bin/swresample-7.dll"
             "${FFMPEG_ROOT}/bin/swscale-10.dll"
             "${ONNXRUNTIME_ROOT}/lib/onnxruntime.dll"
+            "${ONNXRUNTIME_ROOT}/lib/onnxruntime_providers_shared.dll"
+            "${ONNXRUNTIME_ROOT}/lib/onnxruntime_providers_cuda.dll"
             "${OpenCV_ROOT}/x64/vc16/bin/opencv_world490.dll"
             ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/$<CONFIG>
     )

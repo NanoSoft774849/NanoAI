@@ -97,6 +97,13 @@ cmake . -B build -DOpenCV_ROOT=/path/to/opencv -DFFMPEG_ROOT=/path/to/ffmpeg
 
 …or edit the defaults in [CMakeLists.txt](CMakeLists.txt).
 
+To enable the CUDA execution provider (recommended for real-time; see the
+benchmark numbers below):
+
+```bash
+cmake . -B build -DUSE_CUDA=ON
+```
+
 ## Consuming the DLL
 
 ### Roll your own single-input model
@@ -207,8 +214,9 @@ build\Release\Detector.exe models\cas_dense.onnx models\cas_score.onnx \
 ```
 
 It runs one warm-up iteration, then N iterations, and prints mean / min /
-max + per-stage share of total time. Sample output (10 cores / 8 threads,
-`test1.jpg`, N = 10):
+max + per-stage share of total time. Sample outputs below.
+
+### CPU baseline (10 cores / 8 threads, `test1.jpg`, N = 10)
 
 ```text
 Per-stage timings (10 samples):
@@ -219,16 +227,49 @@ Per-stage timings (10 samples):
   TOTAL                  mean= 2729.18 ms  min= 2553.56 ms  max= 2971.33 ms  (100.0 %)
 ```
 
+### With CUDA execution provider (`-DUSE_CUDA=ON`, same image, N = 10)
+
+```text
+Per-stage timings (10 samples):
+  dense preprocess       mean=    4.23 ms  min=    3.58 ms  max=    6.35 ms  ( 10.9 %)
+  dense inference        mean=   27.03 ms  min=   24.70 ms  max=   30.17 ms  ( 69.9 %)
+  decode                 mean=    2.18 ms  min=    1.56 ms  max=    4.84 ms  (  5.6 %)
+  score                  mean=    5.23 ms  min=    4.70 ms  max=    6.63 ms  ( 13.5 %)
+  TOTAL                  mean=   38.67 ms  min=   35.39 ms  max=   46.88 ms  (100.0 %)
+```
+
+| Stage            | CPU     | CUDA   | Speedup |
+|------------------|---------|--------|---------|
+| dense preprocess | 4 ms    | 4 ms   | —       |
+| dense inference  | 1813 ms | 27 ms  | **67×** |
+| decode           | 2 ms    | 2 ms   | —       |
+| score            | 911 ms  | 5 ms   | **174×**|
+| **TOTAL**        | **2.73 s** | **39 ms** | **~70×** |
+
+CUDA brings the per-frame budget well under a 15 FPS real-time cap (≤ 67 ms).
+Same lines detected per frame in both modes, so model output is unchanged.
+
+### Enabling CUDA
+
+Reconfigure with `-DUSE_CUDA=ON` and rebuild:
+
+```bash
+cmake . -B build -DUSE_CUDA=ON
+./build.bat
+```
+
+`ns_ort_engine::initialize_handler()` then appends the CUDA EP (device 0)
+to every session's options. Implementation lives in
+`onnxruntime_providers_cuda.dll`, which is copied into `Release/` by the
+post-build step. No CUDA toolkit headers or `cudart.lib` are required to
+compile — only to actually run on a CUDA-capable GPU.
+
 ### Reading the profile
 
-- Preprocess and decode are essentially free (≈ 0.1 % each). They are not
-  the bottleneck and do not need optimization.
-- The two CNN forward-passes dominate (66 % dense + 33 % score = 99 % of
-  total). This is pure ONNX Runtime CPU execution.
-- To reach real-time on CPU you would need a much smaller / lower-resolution
-  model. The cleanest single-step win is GPU / DirectML execution providers
-  — add an EP at session construction time in both engines (out of scope
-  for this repo today).
+- Preprocess and decode are essentially free. They are not the bottleneck.
+- The CNN forward-passes dominate (66 % + 33 % on CPU; 70 % + 14 % on CUDA).
+- On CPU you would need a much smaller / lower-resolution model to reach
+  real-time; on CUDA the EP handles it transparently.
 
 ## Status
 
