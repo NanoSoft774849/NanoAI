@@ -216,7 +216,7 @@ build\Release\Detector.exe models\cas_dense.onnx models\cas_score.onnx \
 It runs one warm-up iteration, then N iterations, and prints mean / min /
 max + per-stage share of total time. Sample outputs below.
 
-### CPU baseline (10 cores / 8 threads, `test1.jpg`, N = 10)
+### CPU baseline (10 cores / 8 threads, `test1.jpg`, threshold 0.80, N = 10)
 
 ```text
 Per-stage timings (10 samples):
@@ -227,16 +227,40 @@ Per-stage timings (10 samples):
   TOTAL                  mean= 2729.18 ms  min= 2553.56 ms  max= 2971.33 ms  (100.0 %)
 ```
 
-### With CUDA execution provider (`-DUSE_CUDA=ON`, same image, N = 10)
+### CUDA execution provider (`-DUSE_CUDA=ON`, same image, threshold 0.80)
+
+Per-iteration totals across runs of increasing length — the means converge
+between N = 50 and N = 100 (within 0.5 %), confirming steady state:
+
+| N   | dense pre (ms) | dense inf (ms) | decode (ms) | score (ms) | **TOTAL (ms)** | **Mean FPS** |
+|-----|----------------|----------------|-------------|------------|----------------|--------------|
+| 10  | 4.04           | 27.03          | 2.18        | 5.23       | 38.67          | 25.9         |
+| 50  | 3.84           | 24.20          | 1.72        | 5.38       | 35.13          | 28.5         |
+| 100 | 3.78           | 24.48          | 1.67        | 5.31       | 35.25          | 28.4         |
+| 200 | 2.66           | 23.93          | 1.62        | 5.03       | **33.24**      | **30.1**     |
+
+Sample N = 200 raw output:
 
 ```text
-Per-stage timings (10 samples):
-  dense preprocess       mean=    4.23 ms  min=    3.58 ms  max=    6.35 ms  ( 10.9 %)
-  dense inference        mean=   27.03 ms  min=   24.70 ms  max=   30.17 ms  ( 69.9 %)
-  decode                 mean=    2.18 ms  min=    1.56 ms  max=    4.84 ms  (  5.6 %)
-  score                  mean=    5.23 ms  min=    4.70 ms  max=    6.63 ms  ( 13.5 %)
-  TOTAL                  mean=   38.67 ms  min=   35.39 ms  max=   46.88 ms  (100.0 %)
+Per-stage timings (200 samples):
+  dense preprocess       mean=    2.66 ms  min=    2.38 ms  max=    3.75 ms  (  8.0 %)
+  dense inference        mean=   23.93 ms  min=   21.06 ms  max=   28.62 ms  ( 72.0 %)
+  decode                 mean=    1.62 ms  min=    1.54 ms  max=    2.73 ms  (  4.9 %)
+  score                  mean=    5.03 ms  min=    4.36 ms  max=    7.06 ms  ( 15.1 %)
+  TOTAL                  mean=   33.24 ms  min=   29.67 ms  max=   37.97 ms  (100.0 %)
+
+Lines per frame: mean=33.0
 ```
+
+Best / worst frame rate at N = 200:
+
+| Metric | Per-frame | FPS |
+|--------|-----------|-----|
+| Mean   | 33.24 ms  | 30.1 |
+| Min    | 29.67 ms  | 33.7 |
+| Max    | 37.97 ms  | 26.3 |
+
+### CPU vs CUDA head-to-head (N = 10, threshold 0.80)
 
 | Stage            | CPU     | CUDA   | Speedup |
 |------------------|---------|--------|---------|
@@ -248,6 +272,21 @@ Per-stage timings (10 samples):
 
 CUDA brings the per-frame budget well under a 15 FPS real-time cap (≤ 67 ms).
 Same lines detected per frame in both modes, so model output is unchanged.
+
+### Effect of line-score threshold (CUDA, N = 200)
+
+| Threshold | Lines/frame | TOTAL (ms) | Mean FPS |
+|-----------|-------------|------------|----------|
+| 0.80      | 33          | 33.24      | 30.1     |
+| 0.90      | 30          | 34.44      | 29.0     |
+
+Threshold has **no meaningful effect on speed**. The score session is
+invoked on **all decoded proposals** (up to 512 slots), not just the ones
+that will survive the filter — the threshold only filters *after* scoring.
+The 3 fewer lines at 0.90 are the only observable difference. To speed up
+further, reduce the number of proposals entering the score session via
+`CasDetectorOptions::maximumJunctions` / `maximumLineCenters` /
+`junctionThreshold` instead.
 
 ### Enabling CUDA
 
@@ -266,10 +305,19 @@ compile — only to actually run on a CUDA-capable GPU.
 
 ### Reading the profile
 
-- Preprocess and decode are essentially free. They are not the bottleneck.
-- The CNN forward-passes dominate (66 % + 33 % on CPU; 70 % + 14 % on CUDA).
-- On CPU you would need a much smaller / lower-resolution model to reach
-  real-time; on CUDA the EP handles it transparently.
+- **Preprocess and decode are essentially free** (~ 0.1 % on CPU, ~ 13 %
+  combined on CUDA). They are not the bottleneck and do not need
+  optimization.
+- **The CNN forward-passes dominate.** Dense inference is ~ 70 % of the
+  CUDA budget, score is ~ 15 %. On CPU they were 66 % and 33 %.
+- **On CPU you would need a much smaller / lower-resolution model** to
+  reach real-time; the dense model alone takes ~ 1.8 s at 512×512 on 10
+  cores. **On CUDA the EP handles it transparently** — ~ 30 FPS is plenty
+  for real-time use.
+- **The dense inference stage is single-batched.** A second call cannot
+  start until the previous `session().Run()` returns. To push beyond 30 FPS
+  you would need to overlap a second frame with the first via two
+  sessions and a producer/consumer queue.
 
 ## Status
 
