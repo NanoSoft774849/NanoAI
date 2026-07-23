@@ -22,9 +22,15 @@ struct CasLine {
 
 struct CasDetectionResult {
     std::vector<CasLine> lines;
-    double denseMilliseconds  = 0.0;
-    double decodeMilliseconds = 0.0;
-    double scoreMilliseconds  = 0.0;
+    // Aggregate timing for the whole dense stage (preprocess + inference).
+    // Kept for backward compatibility; equals
+    // densePreprocessMilliseconds + denseInferenceMilliseconds.
+    double denseMilliseconds           = 0.0;
+    // Breakdown of the dense stage so callers can tell where time goes.
+    double densePreprocessMilliseconds = 0.0;
+    double denseInferenceMilliseconds  = 0.0;
+    double decodeMilliseconds          = 0.0;
+    double scoreMilliseconds           = 0.0;
 };
 
 // CasOasisDetector is a thin façade over two engines:

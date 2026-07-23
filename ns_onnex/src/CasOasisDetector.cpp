@@ -53,11 +53,14 @@ CasDetectionResult CasOasisDetector::detect(
     CasDetectionResult result;
 
     // ---- 1. Dense inference ------------------------------------------------
-    const auto denseStart = Clock::now();
+    // CasDenseEngine::run() reports its own preprocess vs. inference
+    // breakdown, so we read it directly instead of wall-clock-wrapping the
+    // call here (which would also include the Output struct move cost).
     CasDenseEngine::Output denseOut = dense_.run(bgrImage);
-    const auto denseEnd = Clock::now();
+    result.densePreprocessMilliseconds = denseOut.preprocessMilliseconds;
+    result.denseInferenceMilliseconds  = denseOut.inferenceMilliseconds;
     result.denseMilliseconds =
-        std::chrono::duration<double, std::milli>(denseEnd - denseStart).count();
+        denseOut.preprocessMilliseconds + denseOut.inferenceMilliseconds;
 
     // ---- 2. Decode junctions + proposals ----------------------------------
     const int heatmapHeight = dense_.heatmapHeight();

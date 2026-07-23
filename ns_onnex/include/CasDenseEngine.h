@@ -32,6 +32,11 @@ public:
         Ort::Value centerMap;       // [1, 1,   128, 128]
         Ort::Value centerOffsets;   // [1, 2,   128, 128]
         Ort::Value lineVectors;     // [1, 4,   128, 128]
+
+        // Per-stage timings from the last run() (milliseconds). Lets the
+        // caller tell apart preprocess cost from ONNX Runtime cost.
+        double preprocessMilliseconds = 0.0;
+        double inferenceMilliseconds  = 0.0;
     };
 
     CasDenseEngine(

@@ -62,7 +62,9 @@ void drawResult(cv::Mat& image, const CasDetectionResult& result)
     std::ostringstream status;
     status << std::fixed << std::setprecision(1)
            << "Lines: " << result.lines.size()
-           << " | Dense: " << result.denseMilliseconds << " ms"
+           << " | Dense(pre/in): "
+           << result.densePreprocessMilliseconds << " / "
+           << result.denseInferenceMilliseconds << " ms"
            << " | Decode: " << result.decodeMilliseconds << " ms"
            << " | Score: " << result.scoreMilliseconds << " ms"
            << " | Total: " << totalMilliseconds << " ms";
@@ -95,11 +97,16 @@ void printUsage(const char* program)
         << "Single image:\n  "
         << program
         << " <cas_dense.onnx> <cas_score.onnx> --image <image_path> [threshold]\n\n"
+        << "Benchmark (runs N iterations, prints mean/min/max per stage):\n  "
+        << program
+        << " <cas_dense.onnx> <cas_score.onnx> --bench <image_path> [N] [threshold]\n\n"
         << "Examples:\n  "
         << program
         << " models\\cas_dense.onnx models\\cas_score.onnx 0 0.80\n  "
         << program
-        << " models\\cas_dense.onnx models\\cas_score.onnx --image test.jpg 0.80\n";
+        << " models\\cas_dense.onnx models\\cas_score.onnx --image test.jpg 0.80\n  "
+        << program
+        << " models\\cas_dense.onnx models\\cas_score.onnx --bench test.jpg 50 0.80\n";
 }
 
 float parseThreshold(const char* value)
@@ -136,6 +143,115 @@ int runImage(
     std::cout << "Saved: " << outputPath << '\n';
     cv::imshow("CAS-Oasis Line Detection", image);
     cv::waitKey(0);
+    return 0;
+}
+
+namespace {
+
+// Stage summary: mean/min/max + per-stage percent of total. Computed from
+// a fixed-capacity vector of per-iteration samples so it allocates once.
+struct StageStats {
+    double sum = 0.0;
+    double min = 1e18;
+    double max = 0.0;
+};
+
+void update(StageStats& stats, double value)
+{
+    stats.sum += value;
+    if (value < stats.min) stats.min = value;
+    if (value > stats.max) stats.max = value;
+}
+
+void printStatsLine(
+    const std::string& label,
+    const StageStats& stats,
+    std::size_t count,
+    double totalMean
+)
+{
+    const double mean = count > 0 ? stats.sum / static_cast<double>(count) : 0.0;
+    const double share = totalMean > 0.0 ? 100.0 * mean / totalMean : 0.0;
+
+    std::cout
+        << "  " << std::left << std::setw(22) << label
+        << std::right << std::fixed << std::setprecision(2)
+        << " mean=" << std::setw(8) << mean << " ms"
+        << "  min=" << std::setw(8) << stats.min << " ms"
+        << "  max=" << std::setw(8) << stats.max << " ms"
+        << "  (" << std::setprecision(1) << std::setw(5) << share << " %)\n";
+}
+
+}  // namespace
+
+int runBench(
+    CasOasisDetector& detector,
+    const std::filesystem::path& imagePath,
+    int iterations,
+    float threshold
+)
+{
+    if (iterations < 1) {
+        throw std::invalid_argument("Iteration count must be >= 1.");
+    }
+
+    cv::Mat image = cv::imread(imagePath.string(), cv::IMREAD_COLOR);
+    if (image.empty()) {
+        throw std::runtime_error("Could not read image: " + imagePath.string());
+    }
+
+    std::cout
+        << "Benchmark: " << imagePath << '\n'
+        << "  image:    " << image.cols << 'x' << image.rows << '\n'
+        << "  input:    " << detector.inputWidth() << 'x'
+        << detector.inputHeight() << '\n'
+        << "  iters:    " << iterations << '\n'
+        << "  threshold:" << threshold << '\n'
+        << "  warming up..." << std::flush;
+
+    // Single warm-up so kernel-compile cost does not skew the first sample.
+    (void)detector.detect(image, threshold, 160);
+
+    std::cout << " done\n\n";
+
+    std::vector<CasDetectionResult> samples;
+    samples.reserve(static_cast<std::size_t>(iterations));
+
+    for (int i = 0; i < iterations; ++i) {
+        samples.push_back(detector.detect(image, threshold, 160));
+    }
+
+    StageStats pre, inf, dec, sc, tot;
+    std::size_t lineCount = 0;
+    for (const CasDetectionResult& r : samples) {
+        const double t = r.densePreprocessMilliseconds
+                       + r.denseInferenceMilliseconds
+                       + r.decodeMilliseconds
+                       + r.scoreMilliseconds;
+        update(pre, r.densePreprocessMilliseconds);
+        update(inf, r.denseInferenceMilliseconds);
+        update(dec, r.decodeMilliseconds);
+        update(sc,  r.scoreMilliseconds);
+        update(tot, t);
+        lineCount += r.lines.size();
+    }
+
+    const double totalMean =
+        samples.empty() ? 0.0 : tot.sum / static_cast<double>(samples.size());
+
+    std::cout << "Per-stage timings (" << samples.size() << " samples):\n";
+    printStatsLine("dense preprocess", pre, samples.size(), totalMean);
+    printStatsLine("dense inference",  inf, samples.size(), totalMean);
+    printStatsLine("decode",           dec, samples.size(), totalMean);
+    printStatsLine("score",            sc,  samples.size(), totalMean);
+    printStatsLine("TOTAL",            tot, samples.size(), totalMean);
+
+    std::cout
+        << "\nLines per frame: mean="
+        << (samples.empty() ? 0.0
+            : static_cast<double>(lineCount) / static_cast<double>(samples.size()))
+        << "\n";
+
     return 0;
 }
 
@@ -232,6 +348,13 @@ int main(int argc, char** argv)
             const std::filesystem::path imagePath = argv[4];
             const float threshold = argc >= 6 ? parseThreshold(argv[5]) : 0.80f;
             return runImage(detector, imagePath, threshold);
+        }
+
+        if (argc >= 5 && std::string(argv[3]) == "--bench") {
+            const std::filesystem::path imagePath = argv[4];
+            const int    iterations = argc >= 6 ? std::stoi(argv[5]) : 20;
+            const float  threshold  = argc >= 7 ? parseThreshold(argv[6]) : 0.80f;
+            return runBench(detector, imagePath, iterations, threshold);
         }
 
         const int cameraIndex = argc >= 4 ? std::stoi(argv[3]) : 0;

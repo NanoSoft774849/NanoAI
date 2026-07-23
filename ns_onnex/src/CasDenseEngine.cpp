@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstring>
 #include <stdexcept>
@@ -120,8 +121,17 @@ Ort::Value CasDenseEngine::transform(const cv::Mat& bgrImage)
 
 CasDenseEngine::Output CasDenseEngine::run(const cv::Mat& bgrImage)
 {
-    Ort::Value inputTensor = transform(bgrImage);
+    // Time preprocess (resize + colorspace + normalize + planarity + memcpy)
+    // and inference (session().Run) independently so the caller can pinpoint
+    // where the budget goes. Use steady_clock to match the rest of the
+    // detector timings.
+    using Clock = std::chrono::steady_clock;
 
+    const auto preprocessStart = Clock::now();
+    Ort::Value inputTensor = transform(bgrImage);
+    const auto preprocessEnd = Clock::now();
+
+    const auto inferenceStart = Clock::now();
     const auto& inputNames  = input_names_raw();
     const auto& outputNames = output_names_raw();
 
@@ -133,6 +143,8 @@ CasDenseEngine::Output CasDenseEngine::run(const cv::Mat& bgrImage)
         outputNames.data(),
         outputNames.size()
     );
+
+    const auto inferenceEnd = Clock::now();
 
     if (outputs.size() != 6) {
         throw std::runtime_error(
@@ -148,6 +160,15 @@ CasDenseEngine::Output CasDenseEngine::run(const cv::Mat& bgrImage)
     result.centerMap        = std::move(outputs[3]);
     result.centerOffsets    = std::move(outputs[4]);
     result.lineVectors      = std::move(outputs[5]);
+
+    result.preprocessMilliseconds =
+        std::chrono::duration<double, std::milli>(
+            preprocessEnd - preprocessStart
+        ).count();
+    result.inferenceMilliseconds =
+        std::chrono::duration<double, std::milli>(
+            inferenceEnd - inferenceStart
+        ).count();
     return result;
 }
 
