@@ -186,6 +186,50 @@ The detector is designed for repeated calls from a real-time loop:
 - **`warmUp()`** — runs a zero-image inference on each engine once so the
   first real frame doesn't pay ORT's kernel-compile tax.
 
+## Profiling / benchmarking
+
+`CasDenseEngine::Output` and `CasDetectionResult` expose a per-stage
+breakdown, not just a single dense total:
+
+| Field                          | What it covers                                  |
+|--------------------------------|-------------------------------------------------|
+| `densePreprocessMilliseconds`  | resize + BGR→RGB + normalize + plane memcpy     |
+| `denseInferenceMilliseconds`   | `session().Run(...)` on `cas_dense.onnx`        |
+| `decodeMilliseconds`           | `cas::decoding::decodeJunctions/Proposals` NMS  |
+| `scoreMilliseconds`            | `session().Run(...)` on `cas_score.onnx`        |
+| `denseMilliseconds`            | sum of preprocess + inference (back-compat)     |
+
+The `Detector.exe` example ships with a benchmark mode:
+
+```bash
+build\Release\Detector.exe models\cas_dense.onnx models\cas_score.onnx \
+    --bench test1.jpg 50 0.80
+```
+
+It runs one warm-up iteration, then N iterations, and prints mean / min /
+max + per-stage share of total time. Sample output (10 cores / 8 threads,
+`test1.jpg`, N = 10):
+
+```text
+Per-stage timings (10 samples):
+  dense preprocess       mean=    4.04 ms  min=    3.15 ms  max=    6.34 ms  (  0.1 %)
+  dense inference        mean= 1812.52 ms  min= 1619.63 ms  max= 1967.63 ms  ( 66.4 %)
+  decode                 mean=    1.76 ms  min=    1.51 ms  max=    2.49 ms  (  0.1 %)
+  score                  mean=  910.86 ms  min=  758.65 ms  max= 1093.61 ms  ( 33.4 %)
+  TOTAL                  mean= 2729.18 ms  min= 2553.56 ms  max= 2971.33 ms  (100.0 %)
+```
+
+### Reading the profile
+
+- Preprocess and decode are essentially free (≈ 0.1 % each). They are not
+  the bottleneck and do not need optimization.
+- The two CNN forward-passes dominate (66 % dense + 33 % score = 99 % of
+  total). This is pure ONNX Runtime CPU execution.
+- To reach real-time on CPU you would need a much smaller / lower-resolution
+  model. The cleanest single-step win is GPU / DirectML execution providers
+  — add an EP at session construction time in both engines (out of scope
+  for this repo today).
+
 ## Status
 
 - Builds clean: **0 errors**. A handful of pre-existing `C4251` (DLL-interface
