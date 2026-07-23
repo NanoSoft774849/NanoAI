@@ -13,10 +13,12 @@ CasDenseEngine::CasDenseEngine(
     const std::filesystem::path& modelPath,
     CasDetectorOptions options
 )
-    // 0 threads means "let ORT pick"; otherwise forward the user's count.
+    // 0 → "let ORT pick" (uses hardware_concurrency). Negative values
+    // (which would be a user error) are clamped to 0 so they degrade
+    // gracefully to auto-pick rather than silently pinning to 1 thread.
     : ns_ort_engine(
           modelPath.string(),
-          static_cast<unsigned int>(std::max(1, options.intraOpThreads))
+          static_cast<unsigned int>(std::max(0, options.intraOpThreads))
       )
 {
     if (!std::filesystem::is_regular_file(modelPath)) {
