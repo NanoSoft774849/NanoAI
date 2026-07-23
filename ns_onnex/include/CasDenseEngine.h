@@ -61,6 +61,12 @@ protected:
 private:
     std::vector<float> preprocess(const cv::Mat& bgrImage) const;
 
+    // Owns the buffer that backs the Ort::Value returned by transform().
+    // Must outlive the Ort::Value because ONNX Runtime does not copy the
+    // data when given a raw pointer (with the arena allocator); a local
+    // vector here would dangle the moment transform() returned.
+    mutable std::vector<float> preprocessBuffer_;
+
     int inputWidth_   = 0;
     int inputHeight_  = 0;
     int heatmapWidth_  = 0;

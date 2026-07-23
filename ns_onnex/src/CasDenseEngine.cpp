@@ -109,8 +109,11 @@ std::vector<float> CasDenseEngine::preprocess(const cv::Mat& bgrImage) const
 
 Ort::Value CasDenseEngine::transform(const cv::Mat& bgrImage)
 {
-    std::vector<float> data = preprocess(bgrImage);
-    return create_tensor<float>(data, input_shapes().front());
+    // preprocess() returns a fresh vector each call; assign it into the
+    // engine-owned buffer so the Ort::Value's data pointer stays valid
+    // after transform() returns. The next run() / warmUp() overwrites it.
+    preprocessBuffer_ = preprocess(bgrImage);
+    return create_tensor<float>(preprocessBuffer_, input_shapes().front());
 }
 
 CasDenseEngine::Output CasDenseEngine::run(const cv::Mat& bgrImage)
